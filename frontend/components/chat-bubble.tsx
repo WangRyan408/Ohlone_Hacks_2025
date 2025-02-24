@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
 interface Message {
-  id: number
+  id: string
   sender: "user" | "therapist"
   content: string
   timestamp: string

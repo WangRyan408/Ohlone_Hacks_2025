@@ -32,7 +32,7 @@ export function ResourceCard({ resource }: { resource: Resource }) {
         </div>
       </CardHeader>
       <CardContent>
-        <a href={resource.link} className="text-primary hover:underline">
+        <a href="https://newsinhealth.nih.gov/2016/03/understanding-anxiety-disorders" className="text-primary hover:underline">
           Access Resource
         </a>
       </CardContent>

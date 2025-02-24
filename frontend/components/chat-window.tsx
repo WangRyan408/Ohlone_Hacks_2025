@@ -4,42 +4,77 @@ import { useState, useEffect, type KeyboardEvent } from "react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { ChatBubble } from "./chat-bubble"
+import { useChannel, ChannelProvider } from "ably/react"
+import type { Message as AblyMessage } from "ably"
+import { useAuth } from "@/providers/auth-provider"
+import { useRouter } from "next/navigation"
 
 interface Message {
-  id: number
+  id: string
   sender: "user" | "therapist"
   content: string
-  timestamp: string // Change this to string
+  timestamp: string
 }
 
-const initialMessages: Record<number, Message[]> = {
-  1: [
-    { id: 1, sender: "therapist", content: "Hello! How can I help you today?", timestamp: "2023-05-01T10:00:00Z" },
-    { id: 2, sender: "user", content: "I've been feeling anxious lately.", timestamp: "2023-05-01T10:05:00Z" },
-  ],
-  2: [{ id: 1, sender: "therapist", content: "Hi there! How's your day going?", timestamp: "2023-05-01T11:00:00Z" }],
+function getChannelName(therapistId: number, userId: string) {
+  return `chat:${therapistId}:${userId}`;
 }
 
-export function ChatWindow({ conversationId }: { conversationId: number | null }) {
+function ChatMessages({ channelName }: { channelName: string }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [newMessage, setNewMessage] = useState("")
+  const { user } = useAuth()
+  
+  const { channel } = useChannel(channelName);
 
   useEffect(() => {
-    if (conversationId) {
-      setMessages(initialMessages[conversationId] || [])
-    }
-  }, [conversationId])
+    if (!channel) return;
 
-  const handleSendMessage = () => {
-    if (newMessage.trim() && conversationId) {
+    console.log('Channel ready:', channel.name);
+    
+    const handleMessage = (msg: AblyMessage) => {
+      console.log('Message received:', msg);
+      const message = msg.data as Message;
+      setMessages(prev => {
+        console.log('Previous messages:', prev);
+        const newMessages = [...prev, message];
+        console.log('New messages:', newMessages);
+        return newMessages;
+      });
+    };
+
+    channel.subscribe('message', handleMessage);
+
+    return () => {
+      channel.unsubscribe('message', handleMessage);
+    };
+  }, [channel]);
+
+  // Debug messages state changes
+  useEffect(() => {
+    console.log('Messages state updated:', messages);
+  }, [messages]);
+
+  const handleSendMessage = async () => {
+    if (newMessage.trim() && channel && user) {
       const message: Message = {
-        id: messages.length + 1,
+        id: crypto.randomUUID(),
         sender: "user",
         content: newMessage.trim(),
-        timestamp: new Date().toISOString(), // Use ISO string for new messages
+        timestamp: new Date().toISOString(),
       }
-      setMessages([...messages, message])
-      setNewMessage("")
+      
+      try {
+        console.log('Sending message:', message);
+        await channel.publish('message', message);
+        console.log('Message sent successfully');
+        
+        // Add message to state immediately
+        setMessages(prev => [...prev, message]);
+        setNewMessage("");
+      } catch (error) {
+        console.error("Error sending message:", error);
+      }
     }
   }
 
@@ -51,31 +86,68 @@ export function ChatWindow({ conversationId }: { conversationId: number | null }
   }
 
   return (
-    <div className="flex-1 flex flex-col">
+    <>
       <div className="flex-1 p-4 overflow-y-auto">
-        {conversationId ? (
-          messages.map((message) => <ChatBubble key={message.id} message={message} />)
-        ) : (
-          <div className="flex items-center justify-center h-full">
-            <p className="text-muted-foreground">Select a conversation to start chatting.</p>
-          </div>
-        )}
+        <div className="space-y-4">
+          {messages.length === 0 ? (
+            <div className="text-center text-muted-foreground">No messages yet</div>
+          ) : (
+            messages.map((message) => (
+              <ChatBubble key={message.id} message={message} />
+            ))
+          )}
+        </div>
       </div>
       <div className="p-4 bg-background border-t">
         <div className="flex space-x-2">
           <Textarea
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder={conversationId ? "Type your message..." : "Select a conversation to start chatting"}
+            onKeyDown={handleKeyPress}
+            placeholder="Type your message..."
             className="flex-1"
-            disabled={!conversationId}
+            disabled={!user}
           />
-          <Button onClick={handleSendMessage} disabled={!conversationId}>
+          <Button onClick={() => handleSendMessage()} disabled={!user}>
             Send
           </Button>
         </div>
       </div>
+    </>
+  )
+}
+
+export function ChatWindow({ conversationId }: { conversationId: number | null }) {
+  const { user, loading } = useAuth()
+  const router = useRouter()
+  
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push('/auth/sign-in')
+    }
+  }, [loading, user, router])
+
+  if (loading) {
+    return <div>Loading...</div>
+  }
+
+  if (!user) {
+    return null
+  }
+
+  const channelName = conversationId ? getChannelName(conversationId, user.id) : "none";
+
+  return (
+    <div className="flex-1 flex flex-col">
+      {conversationId ? (
+        <ChannelProvider channelName={channelName}>
+          <ChatMessages channelName={channelName} />
+        </ChannelProvider>
+      ) : (
+        <div className="flex items-center justify-center h-full">
+          <p className="text-muted-foreground">Select a conversation to start chatting.</p>
+        </div>
+      )}
     </div>
   )
 }

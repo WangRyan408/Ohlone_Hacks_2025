@@ -12,7 +12,7 @@ export default function ChatPage({ params }: { params: { id: string } }) {
     <ClientOnly>
       <div className="flex h-screen">
         <ConversationList activeConversation={activeConversation} setActiveConversation={setActiveConversation} />
-        <ChatWindow therapistId={activeConversation} />
+        <ChatWindow conversationId={activeConversation} />
       </div>
     </ClientOnly>
   )
